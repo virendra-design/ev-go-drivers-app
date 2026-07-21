@@ -1,0 +1,645 @@
+<script>
+let currentDriver = null;
+let financialData = null;
+let attendanceData = null;
+let activeShift = null;
+let shiftTimer = null;
+let pendingActionType = "IN";
+let map = null;
+let marker = null;
+let videoStream = null;
+
+// ==========================================
+// PERSISTENT SESSION & INIT
+// ==========================================
+document.addEventListener("DOMContentLoaded", function() {
+  initAppSession();
+});
+
+function initAppSession() {
+  const session = localStorage.getItem("evgo_driver");
+  if (session) {
+    try {
+      currentDriver = JSON.parse(session);
+      if (currentDriver && currentDriver.id) {
+        showMainApp();
+        loadDashboard();
+        return;
+      }
+    } catch(e) {
+      localStorage.removeItem("evgo_driver");
+    }
+  }
+  showLoginScreen();
+}
+
+function showLoginScreen() {
+  const header = document.getElementById("appHeader");
+  const nav = document.getElementById("bottomNav");
+  if (header) header.classList.add("hidden");
+  if (nav) nav.classList.add("hidden");
+
+  if (typeof stopShiftTimer === "function") stopShiftTimer();
+  if (typeof closeDrawer === "function") closeDrawer();
+
+  showScreen("loginScreen");
+}
+
+function saveSession(driver) { 
+  localStorage.setItem("evgo_driver", JSON.stringify(driver)); 
+}
+
+function logout() {
+  if (!confirm("Are you sure you want to log out?")) return;
+  localStorage.removeItem("evgo_driver");
+  currentDriver = null;
+  activeShift = null;
+  if (typeof stopShiftTimer === "function") stopShiftTimer();
+  showLoginScreen();
+}
+
+function login() {
+  const id = document.getElementById("loginId").value.trim();
+  const pin = document.getElementById("loginPin").value.trim();
+  if (!id || !pin) return alert("Enter ID & PIN");
+
+  showLoader();
+  google.script.run
+    .withSuccessHandler(res => {
+      hideLoader();
+      if (!res || !res.success) return alert(res ? res.message : "Login failed.");
+      currentDriver = res.driver;
+      saveSession(currentDriver);
+      showMainApp();
+      loadDashboard();
+    })
+    .withFailureHandler(err => {
+      hideLoader();
+      alert("Login Error: " + err);
+    })
+    .authenticateDriver(id, pin);
+}
+
+// ==========================================
+// AVATAR & PROFILE MODULE
+// ==========================================
+function getInitials(name) {
+  if (!name) return "EV";
+  const parts = name.trim().split(" ");
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.substring(0, 2).toUpperCase();
+}
+
+function updateAvatars() {
+  if (!currentDriver) return;
+
+  const url = currentDriver.photoUrl;
+  const initials = getInitials(currentDriver.name);
+
+  const drawerBox = document.getElementById("drawerAvatarBox");
+  if (drawerBox) {
+    drawerBox.innerHTML = (url && url.trim() !== "") 
+      ? `<img src="${url}" class="avatar-md" style="margin:0 auto;" alt="Profile" onerror="this.outerHTML='<div class=\\'avatar-md avatar-fallback\\' style=\\'margin:0 auto;\\'>${initials}</div>'">`
+      : `<div class="avatar-md avatar-fallback" style="margin:0 auto;">${initials}</div>`;
+  }
+
+  const profileBox = document.getElementById("profileAvatarBox");
+  if (profileBox) {
+    profileBox.innerHTML = (url && url.trim() !== "") 
+      ? `<img src="${url}" class="avatar-lg" alt="Profile" onerror="this.outerHTML='<div class=\\'avatar-lg avatar-fallback\\'>${initials}</div>'">`
+      : `<div class="avatar-lg avatar-fallback">${initials}</div>`;
+  }
+}
+
+function loadProfile() {
+  if (!currentDriver) return;
+
+  setText("profileName", currentDriver.name || "Driver Name");
+  setText("profileId", currentDriver.id || "EMP7399");
+
+  const phoneVal = currentDriver.phone || currentDriver.mobile || "N/A";
+  const hubVal = currentDriver.hub || "Gurugram Hub";
+
+  setText("profilePhone", phoneVal);
+  setText("profileHub", hubVal);
+
+  updateAvatars();
+}
+
+async function uploadNewProfilePhoto(inputEl) {
+  if (!inputEl.files || !inputEl.files[0]) return;
+
+  showLoader();
+  const file = inputEl.files[0];
+  const photoBase64 = await convertFileToBase64(file);
+
+  google.script.run
+    .withSuccessHandler(res => {
+      hideLoader();
+      if (res.success) {
+        currentDriver.photoUrl = res.photoUrl;
+        saveSession(currentDriver);
+        updateAvatars();
+        alert(res.message);
+      } else {
+        alert(res.message);
+      }
+    })
+    .withFailureHandler(err => {
+      hideLoader();
+      alert("Error: " + err);
+    })
+    .updateProfilePicture(currentDriver.id, photoBase64);
+}
+
+// ==========================================
+// ONBOARDING & FILES
+// ==========================================
+async function submitOnboarding() {
+  const name = document.getElementById("regName").value.trim();
+  const mobile = document.getElementById("regMobile").value.trim();
+  const email = document.getElementById("regEmail").value.trim();
+  const hub = document.getElementById("regHub").value;
+  const pin = document.getElementById("regPin").value.trim();
+
+  if (!name || !mobile || !pin) return alert("Name, Mobile, and PIN are required.");
+
+  showLoader();
+  const photoFile = document.getElementById("regPhoto").files[0];
+  const aadhaarFile = document.getElementById("regAadhaar").files[0];
+  const dlFile = document.getElementById("regDl").files[0];
+
+  let photoBase64 = "", aadhaarBase64 = "", dlBase64 = "";
+  if (photoFile) photoBase64 = await convertFileToBase64(photoFile);
+  if (aadhaarFile) aadhaarBase64 = await convertFileToBase64(aadhaarFile);
+  if (dlFile) dlBase64 = await convertFileToBase64(dlFile);
+
+  google.script.run
+    .withSuccessHandler(res => {
+      hideLoader();
+      alert(res.message);
+      if (res.success) {
+        document.getElementById("loginId").value = res.empId;
+        document.getElementById("loginPin").value = pin;
+        showScreen("loginScreen");
+      }
+    })
+    .registerNewDriver({
+      name: name, mobile: mobile, email: email, hub: hub, pin: pin,
+      photoBase64: photoBase64, aadhaarBase64: aadhaarBase64, dlBase64: dlBase64
+    });
+}
+
+function convertFileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = error => reject(error);
+  });
+}
+
+// ==========================================
+// NAVIGATION & SCREENS
+// ==========================================
+function showMainApp() {
+  document.getElementById("appHeader").classList.remove("hidden");
+  document.getElementById("bottomNav").classList.remove("hidden");
+  showScreen("dashboardScreen");
+}
+
+function showScreen(id) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  const target = document.getElementById(id);
+  if (target) target.classList.add("active");
+
+  if (id === "mapScreen") setTimeout(initMap, 300);
+  if (id === "notificationScreen") loadNotifications();
+  if (id === "sosScreen") loadSosDetails();
+  if (id === "profileScreen") loadProfile();
+}
+
+function navigate(id) { closeDrawer(); showScreen(id); }
+function openDrawer() { document.getElementById("drawer").classList.add("active"); document.getElementById("drawerOverlay").classList.add("active"); }
+function closeDrawer() { document.getElementById("drawer").classList.remove("active"); document.getElementById("drawerOverlay").classList.remove("active"); }
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour >= 4 && hour < 12) return "Good Morning";
+  if (hour >= 12 && hour < 17) return "Good Afternoon";
+  return "Good Evening";
+}
+
+function loadDashboard() {
+  if (!currentDriver) return;
+  
+  setText("headerDriverPill", `${currentDriver.name} • ${currentDriver.id}`);
+  setText("timeGreeting", getGreeting());
+  setText("driverName", currentDriver.name);
+  setText("driverHub", currentDriver.hub);
+  setText("dashboardDriverName", currentDriver.name + " ⚡");
+  setText("dashboardHub", currentDriver.hub + " • " + (currentDriver.vehicleModel || "EV Cargo"));
+
+  updateAvatars();
+  loadAttendance();
+  loadFinance();
+  loadNotifications();
+  loadProfile();
+  loadVehicle();
+}
+
+// ==========================================
+// ATTENDANCE & STATUS BADGE
+// ==========================================
+function updateDriverDutyStatus() {
+  const badge = document.getElementById("driverStatusBadge");
+  if (!badge) return;
+
+  if (activeShift && activeShift.markInEpoch) {
+    badge.innerHTML = "ONLINE ⚡";
+    badge.style.background = "#DCFCE7";
+    badge.style.color = "#15803D";
+  } else {
+    badge.innerHTML = "OFFLINE";
+    badge.style.background = "#F1F5F9";
+    badge.style.color = "#64748B";
+  }
+}
+
+function loadAttendance() {
+  if (!currentDriver) return;
+
+  google.script.run
+    .withSuccessHandler(res => {
+      if (!res || !res.success) return;
+      attendanceData = res.logs;
+      activeShift = res.activeShift;
+      
+      updateDriverDutyStatus();
+      renderAttendance();
+      if (activeShift) startShiftTimer(); else stopShiftTimer();
+    })
+    .getAttendanceData(currentDriver.id);
+}
+
+function renderAttendance() {
+  const box = document.getElementById("attendanceList");
+  if (!box) return;
+  box.innerHTML = "";
+
+  if (!attendanceData || attendanceData.length === 0) {
+    box.innerHTML = "<div style='text-align:center; padding:15px; color:#64748B;'>No duty history found in the last 7 days.</div>";
+    return;
+  }
+
+  attendanceData.forEach(item => {
+    const isNegative = Number(item.netPayout) < 0;
+    const colorClass = isNegative ? "text-red" : "text-green";
+    const displayAmount = isNegative ? `-₹${Math.abs(item.netPayout)}` : `₹${item.netPayout}`;
+    let statusBadge = item.hasActive 
+      ? " <span style='background:#DCFCE7; color:#15803D; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:800;'>ON DUTY ⚡</span>" 
+      : "";
+
+    box.innerHTML += `
+      <div style="background:#fff; border:1px solid #E2E8F0; border-radius:14px; padding:12px 14px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
+        <div>
+          <div style="font-size:13px; font-weight:800; color:#0F172A;">
+            ${item.date}${statusBadge}
+          </div>
+          <div style="font-size:11px; color:#64748B; margin-top:2px;">
+            Client: <b>${item.client}</b> • Login Time: <b style="color:#2563EB;">${item.totalHoursStr}</b>
+          </div>
+        </div>
+        <div class="${colorClass}" style="font-size:16px; font-weight:900;">
+          ${displayAmount}
+        </div>
+      </div>
+    `;
+  });
+}
+
+function startShiftTimer() {
+  stopShiftTimer();
+  shiftTimer = setInterval(() => {
+    if (!activeShift) return;
+    const seconds = Math.floor((Date.now() - activeShift.markInEpoch) / 1000);
+    const h = String(Math.floor(seconds / 3600)).padStart(2, "0");
+    const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
+    const s = String(seconds % 60).padStart(2, "0");
+    setText("shiftTimer", `${h}:${m}:${s}`);
+
+    const maxSecs = (activeShift.maxHours || 12) * 3600;
+    const perSecRate = (activeShift.rate || 750) / maxSecs;
+    const effectiveSecs = Math.min(seconds, maxSecs);
+    setText("livePayoutCounter", "₹" + (effectiveSecs * perSecRate).toFixed(2));
+  }, 1000);
+}
+
+function stopShiftTimer() { if (shiftTimer) clearInterval(shiftTimer); setText("shiftTimer", "00:00:00"); setText("livePayoutCounter", "₹0.00"); }
+
+// ==========================================
+// FINANCE & PAYSLIP MODULE
+// ==========================================
+function loadFinance() {
+  google.script.run
+    .withSuccessHandler(res => {
+      if (!res || !res.success) return;
+      financialData = res;
+      renderFinanceSummary();
+      renderStatements();
+      renderPayslip();
+    })
+    .getFinancialDashboard(currentDriver.id);
+}
+
+function renderFinanceSummary() {
+  if (!financialData) return;
+
+  const totalToday = Number(financialData.todayEarnings || 0);
+  const totalAllTime = Number(financialData.totalEarnings || 0);
+  const formatMoney = val => val < 0 ? `<span class="text-red">-₹${Math.abs(val)}</span>` : `₹${val}`;
+
+  setText("totalEarnings", formatMoney(totalToday));
+  setText("sevenDaysEarnings", formatMoney(totalAllTime));
+  setText("totalEarningsCard", formatMoney(totalAllTime));
+  setText("netPayCard", formatMoney(totalAllTime));
+  setText("totalBase", "₹" + (financialData.totalBase || 0));
+  setText("totalIncentiveCard", "₹" + (financialData.totalIncentives || 0));
+  setText("totalDeduction", `<span class="text-red">-₹${Math.abs(financialData.totalDeductions || 0)}</span>`);
+  setText("totalDeductionCard", `<span class="text-red">-₹${Math.abs(financialData.totalDeductions || 0)}</span>`);
+  setText("workingDays", financialData.daysWorked || 0);
+
+  setText("todayHours", financialData.todayHoursStr || "0h 0m");
+  setText("weeklyAvgHours", financialData.weeklyAvgHoursStr || "0h 0m");
+  setText("monthlyHours", financialData.monthlyHoursStr || "0h 0m");
+}
+
+function renderStatements() {
+  const box = document.getElementById("statementList");
+  if (!box) return;
+  box.innerHTML = "";
+
+  if (!financialData || !financialData.statements || financialData.statements.length === 0) {
+    box.innerHTML = "<div style='text-align:center; padding:15px; color:#64748B;'>No statements available for this range.</div>";
+    return;
+  }
+
+  financialData.statements.forEach(item => {
+    const isNegative = Number(item.netPayout) < 0;
+    const colorClass = isNegative ? "text-red" : "text-green";
+    const displayAmount = isNegative ? `-₹${Math.abs(item.netPayout)}` : `₹${item.netPayout}`;
+    let statusBadge = item.hasActive 
+      ? " <span style='background:#DCFCE7; color:#15803D; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:800;'>ON DUTY ⚡</span>" 
+      : "";
+
+    box.innerHTML += `
+      <div style="background:#fff; border:1px solid #E2E8F0; border-radius:14px; padding:12px 14px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
+        <div>
+          <div style="font-size:13px; font-weight:800; color:#0F172A;">
+            ${item.date}${statusBadge}
+          </div>
+          <div style="font-size:11px; color:#64748B; margin-top:2px;">
+            Client: <b>${item.client}</b> • Login Time: <b style="color:#2563EB;">${item.durationStr}</b>
+          </div>
+        </div>
+        <div class="${colorClass}" style="font-size:16px; font-weight:900;">
+          ${displayAmount}
+        </div>
+      </div>
+    `;
+  });
+}
+
+function filterByDateRange() {
+  const fromStr = document.getElementById("fromDate").value;
+  const toStr = document.getElementById("toDate").value;
+
+  if (!fromStr || !toStr) return alert("Please select both From and To dates.");
+
+  showLoader();
+  google.script.run
+    .withSuccessHandler(res => {
+      hideLoader();
+      if (!res || !res.success) return alert("Failed to filter statements.");
+      financialData = res;
+      renderFinanceSummary();
+      renderStatements();
+    })
+    .getFinancialDashboard(currentDriver.id, fromStr, toStr);
+}
+
+function filterPayslipByMonth() {
+  const monthSelect = document.getElementById("payslipMonthSelect");
+  if (!monthSelect || !currentDriver) return;
+
+  const selectedMonth = monthSelect.value; 
+  showLoader();
+
+  google.script.run
+    .withSuccessHandler(res => {
+      hideLoader();
+      if (!res || !res.success) return alert("Failed to fetch payslip for selected month.");
+      financialData.monthlySummary = res.monthlySummary;
+      renderPayslip();
+    })
+    .withFailureHandler(err => {
+      hideLoader();
+      alert("Error: " + err);
+    })
+    .getFinancialDashboard(currentDriver.id, null, null, selectedMonth);
+}
+
+function renderPayslip() {
+  if (!financialData || !financialData.monthlySummary) return;
+
+  const p = financialData.monthlySummary;
+  const netVal = Number(p.netPayout || 0);
+
+  setText("payMonth", p.month || "July 2026");
+  setText("payDays", p.workingDays || 0);
+  setText("payRevenue", "₹" + (p.totalRevenue || 0));
+  setText("payIncentive", "+₹" + (p.incentive || 0));
+  setText("payPenalty", `<span class="text-red">-₹${Math.abs(p.penalty || 0)}</span>`);
+  setText("payNet", netVal < 0 ? `<span class="text-red">-₹${Math.abs(netVal)}</span>` : `₹${netVal}`);
+}
+
+// ==========================================
+// CAMERA & ATTENDANCE ACTION
+// ==========================================
+async function openCamera(actionType) {
+  pendingActionType = actionType || "IN";
+  showScreen("cameraScreen");
+  try {
+    videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+    document.getElementById("cameraVideo").srcObject = videoStream;
+  } catch(e) { alert("Camera access required for facial verification."); }
+}
+
+function closeCamera() {
+  if (videoStream) { videoStream.getTracks().forEach(t => t.stop()); videoStream = null; }
+  navigate("attendanceScreen");
+}
+
+function captureAttendance() {
+  showLoader();
+  google.script.run
+    .withSuccessHandler(res => { 
+      hideLoader(); 
+      alert(res.message); 
+      closeCamera(); 
+      loadAttendance(); 
+      loadFinance(); 
+    })
+    .processAttendance({ 
+      driverId: currentDriver.id, 
+      type: pendingActionType, 
+      clientName: document.getElementById("clientSelect").value 
+    });
+}
+
+// ==========================================
+// NOTIFICATIONS MODULE
+// ==========================================
+function loadNotifications() {
+  if (!currentDriver) return;
+
+  const box = document.getElementById("notificationList");
+  if (!box) return;
+
+  google.script.run
+    .withSuccessHandler(res => {
+      box.innerHTML = "";
+
+      if (!res || !res.success || !res.notifications || res.notifications.length === 0) {
+        renderDefaultNotifications(box);
+        return;
+      }
+
+      res.notifications.forEach(n => {
+        let badgeColor = "#2563EB";
+        let badgeBg = "#DBEAFE";
+        
+        if (n.type === "alert") { badgeColor = "#DC2626"; badgeBg = "#FEE2E2"; }
+        if (n.type === "success") { badgeColor = "#059669"; badgeBg = "#DCFCE7"; }
+
+        box.innerHTML += `
+          <div style="background:#fff; border:1px solid #E2E8F0; border-radius:14px; padding:14px; margin-bottom:10px; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span style="font-size:13px; font-weight:800; color:#0F172A;">${n.title}</span>
+              <span style="background:${badgeBg}; color:${badgeColor}; font-size:10px; font-weight:800; padding:2px 8px; border-radius:8px; text-transform:uppercase;">${n.type || "INFO"}</span>
+            </div>
+            <p style="font-size:12px; color:#64748B; margin-bottom:6px; line-height:1.4;">${n.message}</p>
+            <div style="font-size:10px; color:#94A3B8; text-align:right;">${n.time || "Recently"}</div>
+          </div>
+        `;
+      });
+    })
+    .withFailureHandler(err => {
+      renderDefaultNotifications(box);
+    })
+    .getDriverNotifications(currentDriver.id);
+}
+
+function renderDefaultNotifications(box) {
+  box.innerHTML = `
+    <div style="background:#fff; border:1px solid #E2E8F0; border-radius:14px; padding:14px; margin-bottom:10px; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <span style="font-size:13px; font-weight:800; color:#0F172A;">⚡ Welcome to EV GO Movers</span>
+        <span style="background:#DCFCE7; color:#059669; font-size:10px; font-weight:800; padding:2px 8px; border-radius:8px;">SYSTEM</span>
+      </div>
+      <p style="font-size:12px; color:#64748B; line-height:1.4;">Your driver account is active. Remember to mark IN before starting your shift and maintain high facial verification accuracy.</p>
+    </div>
+
+    <div style="background:#fff; border:1px solid #E2E8F0; border-radius:14px; padding:14px; margin-bottom:10px; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <span style="font-size:13px; font-weight:800; color:#0F172A;">🔋 Battery Optimization Tip</span>
+        <span style="background:#DBEAFE; color:#2563EB; font-size:10px; font-weight:800; padding:2px 8px; border-radius:8px;">FLEET</span>
+      </div>
+      <p style="font-size:12px; color:#64748B; line-height:1.4;">Keep vehicle SOC above 20% before returning to Gurugram Hub for fast charging cycles.</p>
+    </div>
+  `;
+}
+
+function loadVehicle() { 
+  if (currentDriver) { 
+    setText("vehicleNo", currentDriver.vehicle); 
+    setText("vehicleModel", currentDriver.vehicleModel || "Tata Ace EV"); 
+    setText("vehicleCapacity", currentDriver.capacity || "750 Kg"); 
+  } 
+}
+
+// ==========================================
+// SOS & GPS DISPATCH MODULE
+// ==========================================
+function loadSosDetails() {
+  if (!currentDriver) return;
+  
+  setText("sosDriverName", currentDriver.name);
+  setText("sosDriverId", currentDriver.id);
+  setText("sosVehicle", currentDriver.vehicle);
+  setText("sosHub", currentDriver.hub);
+
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const coords = `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`;
+        setText("sosGpsCoords", "📍 " + coords);
+      },
+      err => {
+        setText("sosGpsCoords", "GPS Unavailable");
+      }
+    );
+  }
+}
+
+function triggerSOS() {
+  if (!currentDriver) return alert("Please log in first.");
+  if (!confirm("🚨 CONFIRM EMERGENCY SOS DISPATCH?\n\nThis will send your location and details to the Fleet Manager.")) return;
+
+  showLoader();
+  let coordsStr = "28.4595,77.0266";
+
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        coordsStr = `${pos.coords.latitude},${pos.coords.longitude}`;
+        dispatchSosToServer(coordsStr);
+      },
+      err => {
+        dispatchSosToServer(coordsStr);
+      }
+    );
+  } else {
+    dispatchSosToServer(coordsStr);
+  }
+}
+
+function dispatchSosToServer(coords) {
+  google.script.run
+    .withSuccessHandler(res => {
+      hideLoader();
+      alert(res.message);
+    })
+    .withFailureHandler(err => {
+      hideLoader();
+      alert("SOS Dispatch Error: " + err);
+    })
+    .triggerSOSAlert(currentDriver.id, coords);
+}
+
+function initMap() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(pos => {
+    const lat = pos.coords.latitude, lng = pos.coords.longitude;
+    if (!map) {
+      map = L.map("map").setView([lat, lng], 15);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
+      marker = L.marker([lat, lng]).addTo(map).bindPopup("Driver GPS Active").openPopup();
+    } else { marker.setLatLng([lat, lng]); map.panTo([lat, lng]); map.invalidateSize(); }
+  });
+}
+
+function setText(id, val) { const el = document.getElementById(id); if (el) el.innerHTML = val; }
+function showLoader() { document.getElementById("loader").classList.remove("hidden"); }
+function hideLoader() { document.getElementById("loader").classList.add("hidden"); }
+</script>
