@@ -1,0 +1,16 @@
+{
+  "name": "EV GO Drivers App",
+  "short_name": "EV GO",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#0F172A",
+  "theme_color": "#059669",
+  "icons": [
+    {
+      "src": "https://lh3.googleusercontent.com/d/1qorj2i350GfWe3UurwbM2_opB5Ojr3e4",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
