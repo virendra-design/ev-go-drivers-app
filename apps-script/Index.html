@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>EV GO Drivers App</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <?!= include('Style'); ?>
+</head>
+<body>
+
+  <div id="loader" class="loader hidden">
+    <div class="spinner"></div>
+    <div style="margin-top:12px; font-weight:800; color:#059669;">Connecting to EV GO...</div>
+  </div>
+
+  <div id="drawerOverlay" class="drawer-overlay" onclick="closeDrawer()"></div>
+
+  <aside id="drawer" class="drawer">
+    <div class="drawer-header">
+      <div id="drawerAvatarBox" style="margin-bottom:8px;">
+        <div class="avatar-md avatar-fallback" style="margin: 0 auto;">EV</div>
+      </div>
+      <h2 id="driverName">Driver Name</h2>
+      <p id="driverHub">Gurugram Hub</p>
+    </div>
+    <nav class="drawer-menu">
+      <div class="drawer-item" onclick="navigate('dashboardScreen')">🏠 Dashboard</div>
+      <div class="drawer-item" onclick="navigate('attendanceScreen')">⏱ Attendance Terminal</div>
+      <div class="drawer-item" onclick="navigate('financeScreen')">💰 Earnings & Custom History</div>
+      <div class="drawer-item" onclick="navigate('payslipScreen')">📄 Monthly Payslip</div>
+      <div class="drawer-item" onclick="navigate('profileScreen')">👤 Driver Profile</div>
+      <div class="drawer-item" onclick="navigate('vehicleScreen')">🚚 Vehicle Specs</div>
+      <div class="drawer-item" onclick="navigate('notificationScreen')">🔔 Notifications</div>
+      <div class="drawer-item" onclick="navigate('mapScreen')">📍 Live GPS Map</div>
+      <div class="drawer-item" onclick="navigate('sosScreen')" style="color:#DC2626;">🚨 Emergency SOS</div>
+      <div class="drawer-item" onclick="logout()" style="color:#64748B;">🚪 Logout</div>
+    </nav>
+  </aside>
+
+  <div class="app">
+    <header id="appHeader" class="app-header hidden">
+      <button class="menu-btn" onclick="openDrawer()">☰</button>
+      <div class="brand-badge">
+        <img src="https://lh3.googleusercontent.com/d/1qorj2i350GfWe3UurwbM2_opB5Ojr3e4" alt="EV GO" class="header-logo">
+      </div>
+      <div id="headerDriverPill" class="vehicle-pill">VIRU • EMP7399</div>
+    </header>
+
+    <main class="content-body">
+      <!-- 1. LOGIN SCREEN -->
+      <section id="loginScreen" class="screen active">
+        <div class="login-card">
+          <div class="login-logo-box">
+            <img src="https://lh3.googleusercontent.com/d/1qorj2i350GfWe3UurwbM2_opB5Ojr3e4" alt="EV GO" class="login-logo">
+          </div>
+          <h1 style="font-size:22px; font-weight:900; margin-bottom:4px;">Driver Portal</h1>
+          <p style="color:#64748B; font-size:12px; margin-bottom:20px;">Sign in to manage shifts & payouts</p>
+
+          <div class="form-group">
+            <label>Employee ID or Mobile</label>
+            <input id="loginId" type="text" value="EMP7399">
+          </div>
+          <div class="form-group">
+            <label>Security PIN</label>
+            <input id="loginPin" type="password" value="1234">
+          </div>
+          <button class="btn-green" onclick="login()">LOGIN TO PORTAL ⚡</button>
+
+          <div style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px;">
+            <p style="font-size: 12px; color: #64748B; margin-bottom: 8px;">New Driver at EV GO?</p>
+            <button class="btn-blue" onclick="showScreen('onboardingScreen')">📝 APPLY FOR ONBOARDING</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. ONBOARDING SCREEN -->
+      <section id="onboardingScreen" class="screen">
+        <div class="login-card" style="margin-top: 10px;">
+          <div class="login-logo-box">
+            <img src="https://lh3.googleusercontent.com/d/1qorj2i350GfWe3UurwbM2_opB5Ojr3e4" alt="EV GO" class="login-logo">
+          </div>
+          <h1 style="font-size:20px; font-weight:900; margin-bottom:4px;">Driver Onboarding</h1>
+          <p style="color:#64748B; font-size:12px; margin-bottom:16px;">Register your details & documents</p>
+
+          <div class="form-group"><label>Full Name *</label><input id="regName" type="text" placeholder="e.g. Rahul Sharma"></div>
+          <div class="form-group"><label>Mobile Number *</label><input id="regMobile" type="tel" placeholder="10-digit Mobile"></div>
+          <div class="form-group"><label>Email Address</label><input id="regEmail" type="email" placeholder="e.g. driver@email.com"></div>
+          <div class="form-group">
+            <label>Operating Hub</label>
+            <select id="regHub">
+              <option value="Gurugram Hub">Gurugram Hub</option>
+              <option value="Delhi Airport Hub">Delhi Airport Hub</option>
+              <option value="Noida Logistics Hub">Noida Logistics Hub</option>
+            </select>
+          </div>
+          <div class="form-group"><label>Create 4-Digit PIN *</label><input id="regPin" type="password" maxlength="4" placeholder="e.g. 1234"></div>
+          <div class="form-group"><label>Profile Photo Upload *</label><input id="regPhoto" type="file" accept="image/*"></div>
+          <div class="form-group"><label>Aadhaar Card Upload</label><input id="regAadhaar" type="file" accept="image/*,.pdf"></div>
+          <div class="form-group"><label>Driving License Upload</label><input id="regDl" type="file" accept="image/*,.pdf"></div>
+
+          <button class="btn-green" onclick="submitOnboarding()">SUBMIT APPLICATION ⚡</button>
+          <button class="btn-red" onclick="showScreen('loginScreen')" style="margin-top:8px;">BACK TO LOGIN</button>
+        </div>
+      </section>
+
+      <!-- 3. DASHBOARD -->
+      <!-- 3. DASHBOARD SCREEN -->
+<section id="dashboardScreen" class="screen">
+  <div class="welcome-card">
+    <div class="welcome-meta">
+      <span class="sub-greeting" id="timeGreeting">Good Morning</span>
+      <h2 id="dashboardDriverName">VIRU ⚡</h2>
+      <p id="dashboardHub">Gurugram Hub • Tata Ace EV</p>
+    </div>
+    <span id="driverStatusBadge" style="background:#F1F5F9; color:#64748B; padding:4px 10px; border-radius:12px; font-size:11px; font-weight:800;">OFFLINE</span>
+  </div>
+
+  <!-- PAYOUT STATS GRID -->
+  <div class="dashboard-grid">
+    <div class="stat-card accent-green">
+      <div class="stat-title">Today's Payout</div>
+      <div id="totalEarnings" class="stat-value">₹0</div>
+    </div>
+    <div class="stat-card accent-blue">
+      <div class="stat-title">Total Payout (All-Time)</div>
+      <div id="sevenDaysEarnings" class="stat-value">₹0</div>
+    </div>
+    <div class="stat-card accent-purple">
+      <div class="stat-title">Base Pay</div>
+      <div id="totalBase" class="stat-value">₹0</div>
+    </div>
+    <div class="stat-card accent-red">
+      <div class="stat-title">Deduction</div>
+      <div id="totalDeduction" class="stat-value text-red">₹0</div>
+    </div>
+  </div>
+
+  <!-- NEW: LOGIN & DUTY HOURS SUMMARY CARD -->
+  <div class="card" style="padding:16px; margin-bottom:16px;">
+    <div style="font-size:12px; font-weight:800; color:#059669; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+      <span>⏱ DUTY LOGIN HOURS METRICS</span>
+      <span style="background:#EFF6FF; color:#2563EB; padding:2px 8px; border-radius:8px; font-size:10px;">TELEMETRY</span>
+    </div>
+    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; text-align:center;">
+      
+      <div style="background:#F8FAFC; border:1px solid #E2E8F0; padding:10px 4px; border-radius:12px;">
+        <div style="font-size:9px; font-weight:800; color:#64748B;">TODAY</div>
+        <div id="todayHours" style="font-size:14px; font-weight:900; color:#0F172A; margin-top:4px;">0h 0m</div>
+      </div>
+
+      <div style="background:#F8FAFC; border:1px solid #E2E8F0; padding:10px 4px; border-radius:12px;">
+        <div style="font-size:9px; font-weight:800; color:#64748B;">WEEKLY AVG</div>
+        <div id="weeklyAvgHours" style="font-size:14px; font-weight:900; color:#2563EB; margin-top:4px;">0h 0m</div>
+      </div>
+
+      <div style="background:#F8FAFC; border:1px solid #E2E8F0; padding:10px 4px; border-radius:12px;">
+        <div style="font-size:9px; font-weight:800; color:#64748B;">MONTH TOTAL</div>
+        <div id="monthlyHours" style="font-size:14px; font-weight:900; color:#059669; margin-top:4px;">0h 0m</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ACTION BUTTONS -->
+  <div style="display:flex; gap:10px; margin-bottom:16px;">
+    <button class="btn-green" onclick="openCamera('IN')">⚡ MARK IN</button>
+    <button class="btn-red" onclick="openCamera('OUT')">🛑 MARK OUT</button>
+  </div>
+</section>
+
+      <!-- 4. ATTENDANCE TERMINAL -->
+      <section id="attendanceScreen" class="screen">
+        <div class="page-title">Attendance Duty Terminal</div>
+        <div class="card">
+          <div class="form-group">
+            <label>Select Shift Client Partner</label>
+            <select id="clientSelect">
+              <option value="Fairdeal">Fairdeal (₹750 / Max 12h)</option>
+              <option value="Amazon">Amazon (₹850 / Max 14h)</option>
+              <option value="Delhivery Limited">Delhivery Limited (₹800 / Max 10h)</option>
+              <option value="Flipkart">Flipkart (₹800 / Max 12h)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="timer-card">
+          <div class="timer-label">ACTIVE SHIFT DURATION</div>
+          <h1 id="shiftTimer">00:00:00</h1>
+          <div class="timer-sublabel" style="font-size:10px; opacity:0.7;">REAL-TIME ACCRUED PAYOUT</div>
+          <div id="livePayoutCounter" class="live-payout">₹0.00</div>
+        </div>
+
+        <div style="display:flex; gap:10px; margin-bottom:16px;">
+          <button class="btn-green" onclick="openCamera('IN')">⚡ MARK IN</button>
+          <button class="btn-red" onclick="openCamera('OUT')">🛑 MARK OUT</button>
+        </div>
+
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+  <span style="font-weight:800; font-size:14px; color:#0F172A;">7-Day Duty Logs</span>
+  <span style="font-size:11px; font-weight:800; background:#DBEAFE; color:#2563EB; padding:3px 8px; border-radius:8px;">WEEKLY VIEW</span>
+</div>
+          <div id="attendanceList">Loading logs...</div>
+        </div>
+      </section>
+
+      <!-- 5. CAMERA VERIFICATION -->
+      <section id="cameraScreen" class="screen">
+        <div class="page-title">Facial Verification</div>
+        <div class="card">
+          <div style="width:100%; height:240px; background:#000; border-radius:16px; overflow:hidden; margin-bottom:12px;">
+            <video id="cameraVideo" autoplay playsinline style="width:100%; height:100%; object-fit:cover;"></video>
+            <canvas id="cameraCanvas" class="hidden"></canvas>
+          </div>
+          <div id="telemetryStatus" style="font-size:11px; color:#64748B; text-align:center; margin-bottom:12px;">Capturing Telemetry...</div>
+          <div style="display:flex; gap:10px;">
+            <button class="btn-green" onclick="captureAttendance()">📸 SUBMIT PHOTO</button>
+            <button class="btn-red" onclick="closeCamera()">CANCEL</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6. FINANCE SCREEN -->
+      <section id="financeScreen" class="screen">
+        <div class="page-title">Earnings & Custom Payouts</div>
+
+        <div class="card">
+          <div style="font-size:12px; font-weight:800; margin-bottom:8px; color:#059669;">📅 SELECT CUSTOM DATE RANGE</div>
+          <div style="display:flex; gap:8px; margin-bottom:10px;">
+            <div style="flex:1;">
+              <label style="font-size:10px; font-weight:800; color:#64748B;">FROM DATE</label>
+              <input id="fromDate" type="date" style="width:100%; padding:8px; border-radius:8px; border:1px solid #E2E8F0;">
+            </div>
+            <div style="flex:1;">
+              <label style="font-size:10px; font-weight:800; color:#64748B;">TO DATE</label>
+              <input id="toDate" type="date" style="width:100%; padding:8px; border-radius:8px; border:1px solid #E2E8F0;">
+            </div>
+          </div>
+          <button class="btn-blue" onclick="filterByDateRange()">🔍 FILTER PAYOUTS</button>
+        </div>
+
+        <div class="dashboard-grid">
+          <div class="stat-card accent-green">
+            <div class="stat-title">Range Total</div>
+            <div id="totalEarningsCard" class="stat-value">₹0</div>
+          </div>
+          <div class="stat-card accent-blue">
+            <div class="stat-title">Incentive</div>
+            <div id="totalIncentiveCard" class="stat-value">₹0</div>
+          </div>
+          <div class="stat-card accent-red">
+            <div class="stat-title">Deduction</div>
+            <div id="totalDeductionCard" class="stat-value text-red">₹0</div>
+          </div>
+          <div class="stat-card accent-purple">
+            <div class="stat-title">Net Pay</div>
+            <div id="netPayCard" class="stat-value">₹0</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom:12px; font-size:15px;">Shift Statements History</h3>
+          <div id="statementList">Loading statements...</div>
+        </div>
+      </section>
+
+      <!-- 7. PAYSLIP -->
+      <!-- 7. MONTHLY PAYSLIP WITH MONTH FILTER -->
+<section id="payslipScreen" class="screen">
+  <div class="page-title">Monthly Salary Payslip</div>
+
+  <!-- MONTH SELECTOR CARD -->
+  <div class="card" style="padding:14px;">
+    <div style="font-size:12px; font-weight:800; margin-bottom:6px; color:#059669;">📅 SELECT SALARY MONTH</div>
+    <div style="display:flex; gap:8px;">
+      <select id="payslipMonthSelect" onchange="filterPayslipByMonth()" style="width:100%; padding:10px; border-radius:10px; border:1px solid #E2E8F0; font-weight:700; background:#F8FAFC;">
+        <option value="2026-07" selected>July 2026</option>
+        <option value="2026-06">June 2026</option>
+        <option value="2026-05">May 2026</option>
+        <option value="2026-04">April 2026</option>
+        <option value="2026-03">March 2026</option>
+        <option value="2026-02">February 2026</option>
+        <option value="2026-01">January 2026</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="login-logo-box">
+      <img src="https://lh3.googleusercontent.com/d/1qorj2i350GfWe3UurwbM2_opB5Ojr3e4" alt="EV GO" class="drawer-logo">
+    </div>
+    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+      <tr style="border-bottom:1px dashed #E2E8F0;"><td style="padding:8px 0;">Month</td><td id="payMonth" style="text-align:right; font-weight:700;">July 2026</td></tr>
+      <tr style="border-bottom:1px dashed #E2E8F0;"><td style="padding:8px 0;">Working Days</td><td id="payDays" style="text-align:right; font-weight:700;">0</td></tr>
+      <tr style="border-bottom:1px dashed #E2E8F0;"><td style="padding:8px 0;">Total Revenue</td><td id="payRevenue" style="text-align:right; font-weight:700;">₹0</td></tr>
+      <tr style="border-bottom:1px dashed #E2E8F0;"><td style="padding:8px 0;">Incentives</td><td id="payIncentive" class="text-green" style="text-align:right; font-weight:700;">+₹0</td></tr>
+      <tr style="border-bottom:1px dashed #E2E8F0;"><td style="padding:8px 0;">Deductions</td><td id="payPenalty" class="text-red" style="text-align:right; font-weight:700;">-₹0</td></tr>
+      <tr style="border-top:2px solid #E2E8F0;"><td style="padding:10px 0;"><b>Net Salary</b></td><td style="text-align:right;"><b id="payNet">₹0</b></td></tr>
+    </table>
+  </div>
+
+  <button class="btn-blue" onclick="window.print()">🖨 DOWNLOAD PAYSLIP PDF</button>
+</section>
+
+
+      <!-- 8. PROFILE SCREEN -->
+<section id="profileScreen" class="screen">
+  <div class="page-title">Driver Profile</div>
+  
+  <div class="card" style="text-align:center; position:relative;">
+    <div id="profileAvatarBox" style="margin-bottom:10px;">
+      <div class="avatar-lg avatar-fallback">EV</div>
+    </div>
+    <h2 id="profileName">VIRU</h2>
+    <p id="profileId" style="color:#64748B; font-size:13px; margin-bottom:12px;">EMP7399</p>
+
+    <label for="updatePhotoInput" style="display:inline-block; padding:8px 16px; background:#EFF6FF; color:#2563EB; font-size:12px; font-weight:800; border-radius:10px; cursor:pointer;">
+      📷 UPDATE PROFILE PHOTO
+    </label>
+    <input id="updatePhotoInput" type="file" accept="image/*" style="display:none;" onchange="uploadNewProfilePhoto(this)">
+  </div>
+
+  <div class="card">
+    <table style="width:100%; font-size:13px; border-collapse:collapse;">
+      <tr style="border-bottom:1px solid #E2E8F0;"><td style="padding:10px 0; color:#64748B;">Mobile Number</td><td id="profilePhone" style="text-align:right; font-weight:800;">-</td></tr>
+      <tr style="border-bottom:1px solid #E2E8F0;"><td style="padding:10px 0; color:#64748B;">Operating Hub</td><td id="profileHub" style="text-align:right; font-weight:800;">-</td></tr>
+    </table>
+  </div>
+</section>
+
+      <!-- 9. VEHICLE -->
+      <section id="vehicleScreen" class="screen">
+        <div class="page-title">Assigned Vehicle</div>
+        <div class="card" style="text-align:center;">
+          <h2 id="vehicleNo">HR55AR0001</h2>
+        </div>
+        <div class="card">
+          <table style="width:100%; font-size:13px;">
+            <tr style="border-bottom:1px solid #E2E8F0;"><td style="padding:10px 0;">Model</td><td id="vehicleModel" style="text-align:right; font-weight:700;">Tata Ace EV</td></tr>
+            <tr style="border-bottom:1px solid #E2E8F0;"><td style="padding:10px 0;">Capacity</td><td id="vehicleCapacity" style="text-align:right; font-weight:700;">750 Kg</td></tr>
+          </table>
+        </div>
+      </section>
+
+      <!-- 10. NOTIFICATIONS -->
+      <section id="notificationScreen" class="screen">
+        <div class="page-title">Notifications Center</div>
+        <div id="notificationList">Loading announcements...</div>
+      </section>
+
+      <!-- 11. SOS -->
+      <!-- 11. EMERGENCY SOS DISPATCH SCREEN -->
+<section id="sosScreen" class="screen">
+  <div class="page-title">Emergency SOS Dispatch</div>
+
+  <!-- SOS TRIGGER CARD -->
+  <div class="card" style="text-align: center; background: linear-gradient(180deg, #FEF2F2 0%, #FFFFFF 100%); border: 1.5px solid #FCA5A5;">
+    <p style="font-size: 11px; font-weight: 800; color: #DC2626; text-transform: uppercase; letter-spacing: 0.5px;">PRESS FOR IMMEDIATE DISPATCH</p>
+    
+    <button style="width:130px; height:130px; border-radius:50%; background:linear-gradient(135deg, #EF4444, #991B1B); color:white; font-size:22px; font-weight:900; border:4px solid white; box-shadow: 0 8px 20px rgba(239, 68, 68, 0.4); margin:16px auto; cursor:pointer;" onclick="triggerSOS()">
+      🚨 SOS
+    </button>
+    
+    <p style="font-size: 11px; color: #64748B;">Triggers instant GPS alert to Fleet Control Room</p>
+  </div>
+
+  <!-- DIRECT EMERGENCY CONTACT NUMBERS -->
+  <div class="card">
+    <div style="font-size: 12px; font-weight: 800; color: #0F172A; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+      📞 DIRECT EMERGENCY CONTACTS
+    </div>
+
+    <!-- Hub Hotline -->
+    <a href="tel:+919876543210" style="text-decoration: none; display: flex; justify-content: space-between; align-items: center; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 12px 14px; border-radius: 12px; margin-bottom: 8px;">
+      <div>
+        <div style="font-size: 12px; font-weight: 800; color: #0F172A;">Fleet Control Room (Hub)</div>
+        <div style="font-size: 11px; color: #64748B;">+91 98765 43210</div>
+      </div>
+      <span style="background: #2563EB; color: white; font-weight: 800; font-size: 11px; padding: 6px 12px; border-radius: 8px;">CALL 📞</span>
+    </a>
+
+    <!-- EV Roadside Assistance -->
+    <a href="tel:18001234567" style="text-decoration: none; display: flex; justify-content: space-between; align-items: center; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 12px 14px; border-radius: 12px; margin-bottom: 8px;">
+      <div>
+        <div style="font-size: 12px; font-weight: 800; color: #0F172A;">24/7 EV Breakdown / RSA</div>
+        <div style="font-size: 11px; color: #64748B;">1800-123-4567 (Toll Free)</div>
+      </div>
+      <span style="background: #059669; color: white; font-weight: 800; font-size: 11px; padding: 6px 12px; border-radius: 8px;">CALL 📞</span>
+    </a>
+
+    <!-- National Emergency Helpline -->
+    <a href="tel:112" style="text-decoration: none; display: flex; justify-content: space-between; align-items: center; background: #FEF2F2; border: 1px solid #FECACA; padding: 12px 14px; border-radius: 12px;">
+      <div>
+        <div style="font-size: 12px; font-weight: 800; color: #DC2626;">National Police & Ambulance</div>
+        <div style="font-size: 11px; color: #991B1B;">Emergency Services (112)</div>
+      </div>
+      <span style="background: #DC2626; color: white; font-weight: 800; font-size: 11px; padding: 6px 12px; border-radius: 8px;">CALL 🚨</span>
+    </a>
+  </div>
+
+  <!-- TELEMETRY & DRIVER INFO CARD -->
+  <div class="card">
+    <div style="font-size: 12px; font-weight: 800; color: #0F172A; margin-bottom: 10px;">📋 DISPATCH TELEMETRY DETAILS</div>
+    <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+      <tr style="border-bottom: 1px solid #F1F5F9;"><td style="padding: 8px 0; color: #64748B;">Driver Name</td><td id="sosDriverName" style="text-align: right; font-weight: 800;">-</td></tr>
+      <tr style="border-bottom: 1px solid #F1F5F9;"><td style="padding: 8px 0; color: #64748B;">Employee ID</td><td id="sosDriverId" style="text-align: right; font-weight: 800;">-</td></tr>
+      <tr style="border-bottom: 1px solid #F1F5F9;"><td style="padding: 8px 0; color: #64748B;">Vehicle Number</td><td id="sosVehicle" style="text-align: right; font-weight: 800;">-</td></tr>
+      <tr style="border-bottom: 1px solid #F1F5F9;"><td style="padding: 8px 0; color: #64748B;">Operating Hub</td><td id="sosHub" style="text-align: right; font-weight: 800;">-</td></tr>
+      <tr><td style="padding: 8px 0; color: #64748B;">GPS Telemetry</td><td id="sosGpsCoords" style="text-align: right; font-weight: 800; color: #2563EB;">Fetching...</td></tr>
+    </table>
+  </div>
+</section>
+
+      <!-- 12. MAP -->
+      <section id="mapScreen" class="screen">
+        <div class="page-title">Live GPS Location Tracker</div>
+        <div class="card"><div id="map" style="width:100%; height:320px; border-radius:14px; border:1px solid #E2E8F0;"></div></div>
+      </section>
+    </main>
+
+    <nav id="bottomNav" class="bottom-nav hidden">
+      <div class="nav-item active" onclick="navigate('dashboardScreen')">🏠<br>Home</div>
+      <div class="nav-item" onclick="navigate('attendanceScreen')">⏱<br>Duty</div>
+      <div class="nav-item" onclick="navigate('financeScreen')">💰<br>Finance</div>
+      <div class="nav-item" onclick="navigate('profileScreen')">👤<br>Profile</div>
+    </nav>
+  </div>
+
+  <?!= include('JS'); ?>
+</body>
+</html>
